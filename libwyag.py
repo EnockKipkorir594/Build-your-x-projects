@@ -509,6 +509,104 @@ def ls_tree(repo, ref, recursive=None, prefix=""):
         else: # This is a branch, recurse
             ls_tree(repo, item.sha, recursive, os.path.join(prefix, item.path))
             
+argsp = argsubparsers.add_parser("checkout", help="Checkout a commit inside a directory")
+
+argsp.add_argument("commit",
+                   help="The commit or tree to checkout")
+
+argsp.add_argument("path",
+                   help="The EMPTY directory to checkout on")
+
+def cmd_checkout(args):
+    repo = repo.find()
+    obj = object_read(repo, object_find(repo, args.commit()))
+    
+    if obj.fmt == b'commit':
+        obj = object_read(repo, obj.kvlm[b'tree'].decode("ascii"))
+    #verify that path is an empty directory 
+    if os.path.exixts(args.path):
+        if not os.path.isdir(args.path):
+            raise Exception(f"Not a directory {args.path}!")
+        if os.listdir(args.path):
+            raise Exception(f"Not empty {args.path}")
+    else:
+        os.makedirs(args.path)
+        
+    tree_checkout(repo, obj, os.path.realpath(args.path))
+    
+def tree_checkout(repo, tree, path):
+    for item in tree.items:
+        obj = object_read(repo, item.sha)
+        dest = os.path.join(path, item.path)
+        
+        if obj.fmt == b'tree':
+            os.mkdir(dest)
+            tree_checkout(repo, obj, dest)
+            
+        elif obj.fmt ==b'blob':
+            with open(dest, "wb") as f:
+                f.write(obj.blobdata)
+                
+def ref_resolve(repo, ref):
+    path = repo_file(repo, ref)
+    
+    if not os.path.isfile(path):
+        return None 
+    
+    with open(path, 'r')as fp:
+        data = fp.read()[:-1]
+        
+        if data.startswith("ref:"):
+            return ref_resolve(repo, data[5:])
+        else:
+            return data 
+        
+def ref_list(repo, path=None):
+    if not path:
+        path = repo_dir(repo, "refs")
+        
+    ret = dict()
+    
+    for f in sorted(os.listdir(path)):
+        can = os.path.join(path, f) 
+        
+        if os.path.isdir(can):
+            ret(f) = ref_list(repo, can)
+        else:
+            ret(f) = ref_resolve(repo, can)
+        
+    return ret
+
+argsp = argsubparsers.add_parser("show-refs", help="List references")
+
+def cmd_show_ref(args):
+    repo = repo_find()
+    refs = ref_list(repo)
+    show_ref(repo, refs, prefix="refs")
+    
+def show_ref(repo, refs, with_hash=True, prefix=""):
+    if prefix:
+        prefix = prefix + '/'
+        for k , v in refs.items():
+            if type(v) == str and with_hash:
+                print(f"{v} {prefix}{k}")
+                
+            elif type(v) == str:
+                print(f"{prefix}{k}")
+                
+            else:
+                show_ref(repo, v, with_hash=with_hash, prefix=f"{prefix}{k}")
+                
+                
+            
+
+        
+            
+            
+    
+    
+
+
 
         
         
